@@ -65,10 +65,8 @@ def vit_patch_embeddings(config, pixel_values, *, parameters):
     return patch_embedding_output
 ```
 
-![input](images/input.png)
-
 ### 2.2 Layer Normalization (Laynorm)
-After embedding the patches, Layer Normalization is applied to the input sequence. This ensures that the input embeddings are normalized before the attention mechanism, which improves the training stability of the model. The block shading in the diagram illustrates how data is partitioned and distributed across multiple processing cores for parallel computation, enhancing efficiency during training.
+After embedding the patches, Layer Normalization is applied to the input sequence. This ensures that the input embeddings are normalized before the attention mechanism, which improves the training stability of the model. The block shading in the diagram (see 2.4) illustrates how data is partitioned and distributed across multiple processing cores for parallel computation, enhancing efficiency during training.
 
 **Code**:
 
@@ -84,7 +82,7 @@ def vit_layernorm_before(config, hidden_states, *, parameters):
 ```
 
 ### 2.3 Linear Projection
-Following normalization, the input is passed through a linear projection layer that transforms the input from one dimension to another. This prepares the input for the self-attention mechanism by aligning the dimensions.
+Following normalization, the input is passed through a linear projection layer that transforms the input from one dimension to another. Again, block sharding is used. This prepares the input for the self-attention mechanism by aligning the dimensions.
 
 **Code**:
 
@@ -97,6 +95,7 @@ def vit_linear_projection(config, hidden_states, *, parameters):
     )
 ```
 
+**Layer Normalization and Linear Projection Diagram**:
 ![input](images/laynormlinear.png)
 
 ### 2.4 Splitting into Q-K-V
@@ -115,6 +114,7 @@ where
 query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query_key_value, num_heads=num_heads)
 ```
 
+**QKV Diagram**:
 ![laynorm](images/qkvsplit.png)
 
 ### 2.5 Attention Mechanism
@@ -126,8 +126,10 @@ The attention mechanism begins by calculating the dot product between the Query 
 attention_scores = ttnn.matmul(query, key)
 attention_probs = ttnn.transformer.attention_softmax_(attention_scores, head_size=head_size)
 ```
-![attn](images/attn.png)
 
+**Attention Diagram**:
+
+![attn](images/attn.png)
 
 ### 2.6 Matmul with Value
 The normalized attention scores are then multiplied by the Value matrix to produce the attention output. This is the core of the self-attention mechanism, allowing the model to focus on different parts of the input sequence.
@@ -181,7 +183,7 @@ layernorm_after_output = ttnn.layer_norm(
     bias=parameters.layernorm_after.bias,
 )
 ```
-
+**Add and Norm Diagram**:
 ![addnorm](images/addnorm.png)
 
 ### 2.10 Feed-Forward Network
@@ -200,6 +202,7 @@ def vit_feedforward(config, hidden_states, attention_output, *, parameters):
     return hidden_states
 ```
 
+**FFN Diagram**:
 ![ffn](images/ffn.png)
 
 ### 2.11 Add and Norm (again)
@@ -217,8 +220,6 @@ The final result after the feed-forward network and the second normalization ste
 `b × seqL × dim`
 
 The output can either be passed to the next layer in the Transformer encoder or to the classification head, depending on the specific task.
-
-![output](images/output.png)
 
 ## 3. Code Walkthrough
 
