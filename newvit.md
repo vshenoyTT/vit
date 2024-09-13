@@ -131,7 +131,7 @@ attention_probs = ttnn.transformer.attention_softmax_(attention_scores, head_siz
 
 **Attention Diagram**:
 
-![attn](images/attn.png)
+![attn](images/attention.png)
 
 ### 2.6 Matmul with Value
 The normalized attention scores are then multiplied by the Value matrix to produce the attention output. This is the core of the self-attention mechanism, allowing the model to focus on different parts of the input sequence.
@@ -156,7 +156,7 @@ context_layer = ttnn.transformer.concatenate_heads(context_layer)
 ```
 **Concat Heads diagram**:
 
-![concat](images/concat.png)
+![concat](images/conc.png)
 
 ### 2.8 Linear Projection (again)
 After concatenating the attention heads, the output is passed through another linear layer to project it back to the original embedding dimension. This ensures that the final output of the attention block has the correct shape for subsequent operations.
