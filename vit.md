@@ -124,6 +124,15 @@ def vit_layernorm_before(config, hidden_states, *, parameters):
 
     return attention_output
 ```
+```python
+"layernorm_program_config": ttnn.LayerNormShardedMultiCoreProgramConfig(
+    compute_with_storage_grid_size=(core_grid.x, core_grid.y),
+    subblock_w=dim_t__x,  # 2,
+    block_h=seqL_t,  # 7,
+    block_w=dim_t__x,  # 2,
+    inplace=False,
+)
+```
 
 ### 2.3 Linear Projection
 Following normalization, the input is passed through a linear projection layer that transforms the input from one dimension to another. Again, block sharding is used. This prepares the input for the self-attention mechanism by aligning the dimensions.
@@ -202,6 +211,22 @@ attention_scores = ttnn.matmul(query, key, memory_config=ttnn.L1_HEIGHT_SHARDED_
 
 attention_probs = ttnn.transformer.attention_softmax_(attention_scores, attention_mask=attention_mask, head_size=head_size, program_config=config.program_configs["softmax_program_config"])
 ```
+```python
+"query_by_key_matmul_program_config": ttnn.MatmulMultiCoreReuseProgramConfig(
+    compute_with_storage_grid_size=(core_grid.x, core_grid.y),
+    in0_block_w=dim_t__x,  # 2,
+    out_subblock_h=1,
+    out_subblock_w=seqL_t,  # 7,
+    per_core_M=seqL_t,  # 7,
+    per_core_N=head_seqL_t,  # 7,
+),
+"softmax_program_config": ttnn.SoftmaxShardedMultiCoreProgramConfig(
+    compute_with_storage_grid_size=(core_grid.x, core_grid.y),
+    subblock_w=head_seqL_t,  # 7,
+    block_h=seqL_t,  # 7,
+    block_w=head_seqL_t,  # 7,
+),
+```
 
 **Attention Diagram**:
 
@@ -220,6 +245,16 @@ context_layer = ttnn.matmul(attention_probs, value)
 
 ```python
 context_layer = ttnn.matmul(attention_probs, value, memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG, dtype=ttnn.bfloat8_b, program_config=config.program_configs["attention_probabilities_by_value_matmul_program_config"])
+```
+```python
+"attention_probabilities_by_value_matmul_program_config": ttnn.MatmulMultiCoreReuseProgramConfig(
+    compute_with_storage_grid_size=(core_grid.x, core_grid.y),
+    in0_block_w=seqL_t,  # 7,
+    out_subblock_h=1,
+    out_subblock_w=head_size_t__x,  # 2,
+    per_core_M=seqL_t,  # 7,
+    per_core_N=head_size_t__x,  # 2,
+)
 ```
 
 ### 2.7 Concatenating Heads
@@ -270,6 +305,18 @@ self_output = ttnn.linear(
     program_config=config.program_configs["self_output_matmul_program_config"],
 )
 ```
+```python
+"self_output_matmul_program_config": ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+    compute_with_storage_grid_size=(core_grid.x, core_grid.y),
+    in0_block_w=dim_t__x,  # 2,
+    out_subblock_h=seqL_t,  # 7,
+    out_subblock_w=dim_t__x,  # 2,
+    per_core_M=seqL_t,  # 7,
+    per_core_N=dim_t__x,  # 2,
+    transpose_mcast=False,
+    fused_activation=None,
+)
+```
 
 ### 2.9 Add and Norm
 A residual connection (skip connection) is applied, adding the original input to the attention block back to the output of the attention block. This helps in maintaining gradient flow through the network and stabilizes training. The resulting tensor is then normalized again using layer normalization.
@@ -302,6 +349,15 @@ layernorm_after_output = ttnn.layer_norm(
     bias=parameters.layernorm_after.bias,
     memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
     program_config=config.program_configs["layernorm_after_output_program_config"],
+)
+```
+```python
+"layernorm_after_output_program_config": ttnn.LayerNormShardedMultiCoreProgramConfig(
+    compute_with_storage_grid_size=(core_grid.x, core_grid.y),
+    subblock_w=dim_t__x,  # 2,
+    block_h=seqL_t,  # 7,
+    block_w=dim_t__x,  # 2,
+    inplace=False,
 )
 ```
 
@@ -409,6 +465,30 @@ query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query
 attention_scores = ttnn.matmul(query, key, memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG, dtype=ttnn.bfloat8_b, program_config=config.program_configs["query_by_key_matmul_program_config"])
 attention_probs = ttnn.transformer.attention_softmax_(attention_scores, attention_mask=attention_mask, head_size=head_size, program_config=config.program_configs["softmax_program_config"])
 context_layer = ttnn.matmul(attention_probs, value, memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG, dtype=ttnn.bfloat8_b, program_config=config.program_configs["attention_probabilities_by_value_matmul_program_config"])
+```
+```python
+"query_by_key_matmul_program_config": ttnn.MatmulMultiCoreReuseProgramConfig(
+    compute_with_storage_grid_size=(core_grid.x, core_grid.y),
+    in0_block_w=dim_t__x,  # 2,
+    out_subblock_h=1,
+    out_subblock_w=seqL_t,  # 7,
+    per_core_M=seqL_t,  # 7,
+    per_core_N=head_seqL_t,  # 7,
+),
+"softmax_program_config": ttnn.SoftmaxShardedMultiCoreProgramConfig(
+    compute_with_storage_grid_size=(core_grid.x, core_grid.y),
+    subblock_w=head_seqL_t,  # 7,
+    block_h=seqL_t,  # 7,
+    block_w=head_seqL_t,  # 7,
+),
+"attention_probabilities_by_value_matmul_program_config": ttnn.MatmulMultiCoreReuseProgramConfig(
+    compute_with_storage_grid_size=(core_grid.x, core_grid.y),
+    in0_block_w=seqL_t,  # 7,
+    out_subblock_h=1,
+    out_subblock_w=head_size_t__x,  # 2,
+    per_core_M=seqL_t,  # 7,
+    per_core_N=head_size_t__x,  # 2,
+)
 ```
 
 ### 3.3 Feed-Forward Network and Residual Connections
