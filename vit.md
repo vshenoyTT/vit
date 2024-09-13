@@ -506,6 +506,19 @@ hidden_states = vit_output(config, intermediate, attention_output, parameters=pa
 ```python
 intermediate = vit_intermediate(config, hidden_states, parameters=parameters.intermediate)
 hidden_states = vit_output(config, intermediate, attention_output, parameters=parameters.output)
+
+def vit_intermediate(config, hidden_states, *, parameters):
+    output = ttnn.linear(
+        hidden_states,
+        parameters.dense.weight,
+        bias=parameters.dense.bias,
+        memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
+        dtype=ttnn.bfloat8_b,
+        program_config=config.program_configs["ff1_matmul_program_config"],
+    )
+    ttnn.deallocate(hidden_states)
+
+    return output
 ```
 
 ## 4. Conclusion
