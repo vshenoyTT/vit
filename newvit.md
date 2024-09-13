@@ -111,6 +111,8 @@ where
 query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query_key_value, num_heads=num_heads)
 ```
 
+![laynorm](images/qkvsplit.png)
+
 ### 2.5 Attention Mechanism
 The attention mechanism begins by calculating the dot product between the Query and Key matrices. This result is then scaled by the size of the attention head to form the Attention Scores. These scores are passed through a Softmax operation, which normalizes them across the sequence length.
 
