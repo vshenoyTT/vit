@@ -16,7 +16,7 @@
   - [2.10 Feed-Forward Network](#210-feed-forward-network)
   - [2.11 Add and Norm (again)](#211-add-and-norm-again)
   - [2.12 Output](#212-output)
-- [3. Futher Implementation](#3-further-implementation)
+- [3. Futher Implementation](#3-futher-implementation)
   - [3.1 Patch Embedding](#31-patch-embedding)
   - [3.2 Self-Attention](#32-self-attention)
   - [3.3 Feed-Forward Network and Residual Connections](#33-feed-forward-network-and-residual-connections)
