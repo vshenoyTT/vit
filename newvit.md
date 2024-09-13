@@ -16,7 +16,7 @@
   - [2.10 Feed-Forward Network](#210-feed-forward-network)
   - [2.11 Add and Norm (again)](#211-add-and-norm-again)
   - [2.12 Output](#212-output)
-- [3. Code Walkthrough](#3-code-walkthrough)
+- [3. Futher Implementation](#3-further-implementation)
   - [3.1 Patch Embedding](#31-patch-embedding)
   - [3.2 Self-Attention](#32-self-attention)
   - [3.3 Feed-Forward Network and Residual Connections](#33-feed-forward-network-and-residual-connections)
@@ -228,7 +228,7 @@ The final result after the feed-forward network and the second normalization ste
 
 The output can either be passed to the next layer in the Transformer encoder or to the classification head, depending on the specific task.
 
-## 3. Code Walkthrough
+## 3. Futher Implementation
 
 ### 3.1 Patch Embedding
 The code for patch embedding is implemented in the vit_patch_embeddings function. This function takes the pixel values of the input image, reshapes them into patches, and then projects these patches into the embedding space using a linear transformation.
