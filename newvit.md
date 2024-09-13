@@ -22,21 +22,24 @@
   - [3.3 Feed-Forward Network and Residual Connections](#33-feed-forward-network-and-residual-connections)
 - [4. Conclusion](#4-conclusion)
 
-
 ## 1. Overview
 
-The Vision Transformer (ViT) architecture in TT-NN leverages the self-attention mechanism, originally designed for NLP tasks, to process image data by treating each image as a sequence of patches. This walkthrough explains the key components of the ViT model and demonstrates how the Tenstorrent TT-NN library implements these components efficiently.
+The Vision Transformer (ViT) is a transformer model that is utilized for  vision procesing tasks. The ViT architecture in TT-NN leverages the self-attention mechanism, originally designed for NLP tasks, to process image data by treating each image as a sequence of patches. This walkthrough explains the key components of the ViT model and demonstrates how the Tenstorrent TT-NN library implements these components efficiently.
 
-## 2. Vision Transformer Architecture
+## 2. Vision Transformer Encoder Implementation
+
+This is a walkthrough of the ViT encoder implementation in TT-NN on Grayskull. The diagram below summarizes all of these steps.
+
+![laynorm](images/diagram.png)
 
 ### 2.1 Input
 The input to the Vision Transformer consists of image patches that are flattened and embedded into a higher-dimensional space. The input is represented as:
 
-`b×seq_len×dim`
+`b × seqL × dim`
 
 Where:
 - `b` is the batch size.
-- `seq_len` is the sequence length (corresponding to the number of patches).
+- `seqL` is the sequence length (corresponding to the number of patches).
 - `dim` is the embedding dimension.
 
 This corresponds to the patch embedding stage, where the image is split into fixed-size patches, flattened, and linearly embedded.
@@ -63,7 +66,7 @@ def vit_patch_embeddings(config, pixel_values, *, parameters):
 ```
 
 ### 2.2 Layer Normalization (Laynorm)
-After embedding the patches, Layer Normalization is applied to the input sequence. This ensures that the input embeddings are normalized before the attention mechanism, which improves the training stability of the model.
+After embedding the patches, Layer Normalization is applied to the input sequence. This ensures that the input embeddings are normalized before the attention mechanism, which improves the training stability of the model. The block shading in the diagram illustrates how data is partitioned and distributed across multiple processing cores for parallel computation, enhancing efficiency during training.
 
 **Code**:
 
@@ -95,7 +98,7 @@ def vit_linear_projection(config, hidden_states, *, parameters):
 ### 2.4 Splitting into Q-K-V
 The input embeddings are then split into Query (Q), Key (K), and Value (V) matrices. This is done by projecting the input embeddings into three separate matrices. Each matrix has a size of:
 
-lh×seq_len×head_size, where lh is the number of attention heads, and **head_size** is the size of each split head.
+lh×seqL×head_size, where lh is the number of attention heads, and **head_size** is the size of each split head.
 
 **Code**:
 
@@ -125,7 +128,7 @@ context_layer = ttnn.matmul(attention_probs, value)
 ### 2.7 Concatenating Heads
 The outputs from all attention heads are concatenated back together. This creates a unified representation of the attention across all heads:
 
-seq_len×head_count×head_size
+seqL×head_count×head_size
 
 This step aggregates the outputs from the different heads into a single vector representation for each position in the sequence.
 
@@ -192,7 +195,7 @@ feedforward_output = ttnn.add(feedforward_output, multi_head_attention_output)
 ### 2.12 Output
 The final result after the feed-forward network and the second normalization step is the Encoder Output. This output has the following shape:
 
-b×seq_len×dim
+b×seqL×dim
 
 The output can either be passed to the next layer in the Transformer encoder or to the classification head, depending on the specific task.
 
