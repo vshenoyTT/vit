@@ -109,6 +109,8 @@ where
 - `seqL` is the sequence length
 - `head_size` is the size of each split head.
 
+Additionally, height sharding is applied by splitting the sequence length (`seqL`) across multiple processing cores. This allows the matrix operations to be parallelized, with each core handling a tile of the sequence length.
+
 **Code**:
 
 ```python
@@ -120,7 +122,7 @@ query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query
 ![laynorm](images/qkvsplit.png)
 
 ### 2.5 Attention Mechanism
-The attention mechanism begins by calculating the dot product between the Query and Key matrices. This result is then scaled by the size of the attention head to form the Attention Scores. These scores are passed through a Softmax operation, which normalizes them across the sequence length.
+The attention mechanism begins by calculating the dot product between the Query and Key matrices. This result is then scaled by the size of the attention head to form the Attention Scores. These scores are passed through a Softmax operation, which normalizes them across the sequence length. Height sharding is applied during this process, where the sequence length is split across cores to parallelize the computation of the Attention Scores, making the operation more efficient.
 
 **Code**:
 
@@ -191,7 +193,7 @@ layernorm_after_output = ttnn.layer_norm(
 ![addnorm](images/addnorm.png)
 
 ### 2.10 Feed-Forward Network
-The output from the attention block is passed through a **Feed-Forward Network** (FFN). The FFN consists of two linear transformations with a GeLU activation function between them. The first linear layer expands the dimensionality of the embeddings, and the second linear layer projects it back to the original size.
+The output from the attention block is passed through a **Feed-Forward Network** (FFN). The FFN consists of two linear transformations with a GeLU activation function between them. The first linear layer expands the dimensionality of the embeddings, and the second linear layer projects it back to the original size. Block sharding is utilized in the FFN, where the computations are split across multiple blocks, allowing for parallel processing and improved efficiency during the linear transformations.
 
 **Code**:
 
