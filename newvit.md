@@ -96,6 +96,7 @@ def vit_linear_projection(config, hidden_states, *, parameters):
 ```
 
 **Layer Normalization and Linear Projection Diagram**:
+
 ![input](images/laynormlinear.png)
 
 ### 2.4 Splitting into Q-K-V
@@ -115,6 +116,7 @@ query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query
 ```
 
 **QKV Diagram**:
+
 ![laynorm](images/qkvsplit.png)
 
 ### 2.5 Attention Mechanism
@@ -152,6 +154,7 @@ This step aggregates the outputs from the different heads into a single vector r
 ```python
 context_layer = ttnn.transformer.concatenate_heads(context_layer)
 ```
+**Concat Heads diagram**:
 
 ![concat](images/concat.png)
 
@@ -184,6 +187,7 @@ layernorm_after_output = ttnn.layer_norm(
 )
 ```
 **Add and Norm Diagram**:
+
 ![addnorm](images/addnorm.png)
 
 ### 2.10 Feed-Forward Network
@@ -203,6 +207,7 @@ def vit_feedforward(config, hidden_states, attention_output, *, parameters):
 ```
 
 **FFN Diagram**:
+
 ![ffn](images/ffn.png)
 
 ### 2.11 Add and Norm (again)
