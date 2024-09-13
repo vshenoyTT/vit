@@ -28,7 +28,7 @@ The [Vision Transformer](https://arxiv.org/pdf/2010.11929) (ViT) is a transforme
 
 ## 2. Vision Transformer Architecture
 
-This is a step-by-step walkthrough of the ViT encoder implementation in TT-NN on Grayskull. The diagram below summarizes all of these steps in a flow chart.
+This is a step-by-step walkthrough of the ViT encoder implementation in TT-NN on Grayskull. The diagram below summarizes all of these steps in a flow chart, which is examined in smaller pieces below.
 
 ![laynorm](images/diagram.png)
 
