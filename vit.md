@@ -142,7 +142,15 @@ def vit_linear_projection(config, hidden_states, *, parameters):
 **Optimized Code**:
 
 ```python
-
+def vit_linear_projection(config, hidden_states, *, parameters):
+    return ttnn.linear(
+        hidden_states,
+        parameters.projection.weight,
+        bias=parameters.projection.bias,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        dtype=ttnn.bfloat16,
+        core_grid=config.core_grid
+    )
 ```
 
 **Layer Normalization and Linear Projection Diagram**:
@@ -172,7 +180,6 @@ query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query
 ```python
 query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query_key_value, memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG, num_heads=num_heads)
 ```
-
 
 **QKV Diagram**:
 
@@ -372,7 +379,15 @@ patch_embedding_output = ttnn.linear(
 **Optimized Code**:
 
 ```python
-
+folded_pixel_values = ttnn.fold(pixel_values, stride_h, stride_w)
+patch_embedding_output = ttnn.linear(
+    folded_pixel_values,
+    parameters.projection.weight,
+    bias=parameters.projection.bias,
+    memory_config=ttnn.L1_MEMORY_CONFIG,
+    dtype=ttnn.bfloat16,
+    core_grid=config.core_grid,
+)
 ```
 
 ### 3.2 Self-Attention
@@ -390,7 +405,10 @@ context_layer = ttnn.matmul(attention_probs, value)
 **Optimized Code**:
 
 ```python
-
+query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query_key_value, memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG, num_heads=num_heads)
+attention_scores = ttnn.matmul(query, key, memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG, dtype=ttnn.bfloat8_b, program_config=config.program_configs["query_by_key_matmul_program_config"])
+attention_probs = ttnn.transformer.attention_softmax_(attention_scores, attention_mask=attention_mask, head_size=head_size, program_config=config.program_configs["softmax_program_config"])
+context_layer = ttnn.matmul(attention_probs, value, memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG, dtype=ttnn.bfloat8_b, program_config=config.program_configs["attention_probabilities_by_value_matmul_program_config"])
 ```
 
 ### 3.3 Feed-Forward Network and Residual Connections
@@ -406,7 +424,8 @@ hidden_states = vit_output(config, intermediate, attention_output, parameters=pa
 **Optimized Code**:
 
 ```python
-
+intermediate = vit_intermediate(config, hidden_states, parameters=parameters.intermediate)
+hidden_states = vit_output(config, intermediate, attention_output, parameters=parameters.output)
 ```
 
 ## 4. Conclusion
