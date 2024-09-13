@@ -231,7 +231,7 @@ context_layer = ttnn.transformer.concatenate_heads(context_layer)
 **Optimized Code**:
 
 ```python
-
+context_layer = ttnn.transformer.concatenate_heads(context_layer. memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG)
 ```
 
 **Concat Heads diagram**:
@@ -254,7 +254,14 @@ self_output = ttnn.linear(
 **Optimized Code**:
 
 ```python
-
+self_output = ttnn.linear(
+    context_layer,
+    parameters.output.dense.weight,
+    bias=parameters.output.dense.bias,
+    memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
+    dtype=ttnn.bfloat8_b,
+    program_config=config.program_configs["self_output_matmul_program_config"],
+)
 ```
 
 ### 2.9 Add and Norm
@@ -276,7 +283,19 @@ layernorm_after_output = ttnn.layer_norm(
 **Optimized Code**:
 
 ```python
-
+multi_head_attention_output = ttnn.add(
+    multi_head_attention_output,
+    hidden_states,
+    memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
+    dtype=ttnn.bfloat8_b,
+)
+layernorm_after_output = ttnn.layer_norm(
+    multi_head_attention_output,
+    weight=parameters.layernorm_after.weight,
+    bias=parameters.layernorm_after.bias,
+    memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
+    program_config=config.program_configs["layernorm_after_output_program_config"],
+)
 ```
 
 **Add and Norm Diagram**:
@@ -302,7 +321,10 @@ def vit_feedforward(config, hidden_states, attention_output, *, parameters):
 **Optimized Code**:
 
 ```python
-
+def vit_feedforward(config, hidden_states, attention_output, *, parameters):
+    intermediate = vit_intermediate(config, hidden_states, parameters=parameters.intermediate)
+    hidden_states = vit_output(config, intermediate, attention_output, parameters=parameters.output)
+    return hidden_states
 ```
 
 **FFN Diagram**:
@@ -321,7 +343,7 @@ feedforward_output = ttnn.add(feedforward_output, multi_head_attention_output)
 **Optimized Code**:
 
 ```python
-
+feedforward_output = vit_feedforward(config, layernorm_after_output, multi_head_attention_output, parameters=parameters)
 ```
 
 ### 2.12 Output
