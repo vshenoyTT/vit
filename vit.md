@@ -94,7 +94,7 @@ def vit_patch_embeddings(config, pixel_values, *, parameters):
 ```
 
 ### 2.2 Layer Normalization (Laynorm)
-After embedding the patches, Layer Normalization is applied to the input sequence. This ensures that the input embeddings are normalized before the attention mechanism, which improves the training stability of the model. The block shading in the diagram (see 2.4) illustrates how data is partitioned and distributed across multiple processing cores for parallel computation, enhancing efficiency during training.
+After embedding the patches, Layer Normalization is applied to the input sequence. This ensures that the input embeddings are normalized before the attention mechanism, which improves the training stability of the model. The **block sharding** in the diagram (see section 2.4 below) illustrates how data is partitioned and distributed across multiple processing cores for parallel computation, enhancing efficiency during training.
 
 **Functional Code**:
 
@@ -135,7 +135,7 @@ def vit_layernorm_before(config, hidden_states, *, parameters):
 ```
 
 ### 2.3 Linear Projection
-Following normalization, the input is passed through a linear projection layer that transforms the input from one dimension to another. Again, block sharding is used. This prepares the input for the self-attention mechanism by aligning the dimensions.
+Following normalization, the input is passed through a linear projection layer that transforms the input from one dimension to another. Again, **block sharding** is used. This prepares the input for the self-attention mechanism by aligning the dimensions.
 
 **Functional Code**:
 
@@ -195,7 +195,7 @@ query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query
 ![laynorm](images/qkvsplit.png)
 
 ### 2.5 Attention Mechanism
-The attention mechanism begins by calculating the dot product between the Query and Key matrices. This result is then scaled by the size of the attention head to form the Attention Scores. These scores are passed through a Softmax operation, which normalizes them across the sequence length. Height sharding is applied during this process, where the sequence length is split across cores to parallelize the computation of the Attention Scores, making the operation more efficient.
+The attention mechanism begins by calculating the dot product between the Query and Key matrices. This result is then scaled by the size of the attention head to form the Attention Scores. These scores are passed through a Softmax operation, which normalizes them across the sequence length. **Height sharding** is applied during this process, where the sequence length is split across cores to parallelize the computation of the Attention Scores, making the operation more efficient.
 
 **Functional Code**:
 
@@ -233,7 +233,7 @@ attention_probs = ttnn.transformer.attention_softmax_(attention_scores, attentio
 ![attn](images/attention.png)
 
 ### 2.6 Matmul with Value
-The normalized attention scores are then multiplied by the Value matrix to produce the attention output. This is the core of the self-attention mechanism, allowing the model to focus on different parts of the input sequence.
+The normalized attention scores are then multiplied by the Value matrix to produce the attention output. This is the core of the self-attention mechanism, allowing the model to focus on different parts of the input sequence. **Height sharding** is used.
 
 **Functional Code**:
 
@@ -281,7 +281,7 @@ context_layer = ttnn.transformer.concatenate_heads(context_layer. memory_config=
 ![concat](images/conc.png)
 
 ### 2.8 Linear Projection (again)
-After concatenating the attention heads, the output is passed through another linear layer to project it back to the original embedding dimension. This ensures that the final output of the attention block has the correct shape for subsequent operations.
+After concatenating the attention heads, the output is passed through another linear layer to project it back to the original embedding dimension. Like the previous linear layer, **block sharding** is used. This ensures that the final output of the attention block has the correct shape for subsequent operations.
 
 **Functional Code**:
 
@@ -319,7 +319,7 @@ self_output = ttnn.linear(
 ```
 
 ### 2.9 Add and Norm
-A residual connection (skip connection) is applied, adding the original input to the attention block back to the output of the attention block. This helps in maintaining gradient flow through the network and stabilizes training. The resulting tensor is then normalized again using layer normalization.
+A residual connection (skip connection) is applied, adding the original input to the attention block back to the output of the attention block. This helps in maintaining gradient flow through the network and stabilizes training. The resulting tensor is then normalized again using layer normalization. Additionally, **block sharding** is used.
 
 **Functional Code**:
 
@@ -366,7 +366,7 @@ layernorm_after_output = ttnn.layer_norm(
 ![addnorm](images/addnorm.png)
 
 ### 2.10 Feed-Forward Network
-The output from the attention block is passed through a **Feed-Forward Network** (FFN). The FFN consists of two linear transformations with a GeLU activation function between them. The first linear layer expands the dimensionality of the embeddings, and the second linear layer projects it back to the original size. Block sharding is utilized in the FFN, where the computations are split across multiple blocks, allowing for parallel processing and improved efficiency during the linear transformations.
+The output from the attention block is passed through a **Feed-Forward Network** (FFN). The FFN consists of two linear transformations with a GeLU activation function between them. The first linear layer expands the dimensionality of the embeddings, and the second linear layer projects it back to the original size. **Block sharding** is utilized in the FFN, where the computations are split across multiple blocks, allowing for parallel processing and improved efficiency during the linear transformations.
 
 **Functional Code**:
 
