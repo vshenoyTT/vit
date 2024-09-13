@@ -44,7 +44,7 @@ Where:
 
 This corresponds to the patch embedding stage, where the image is split into fixed-size patches, flattened, and linearly embedded.
 
-**Code**:
+**Functional Code**:
 
 ```python
 def vit_patch_embeddings(config, pixel_values, *, parameters):
@@ -65,10 +65,38 @@ def vit_patch_embeddings(config, pixel_values, *, parameters):
     return patch_embedding_output
 ```
 
+**Optimized Code**:
+
+```python
+def vit_patch_embeddings(config, pixel_values, *, parameters):
+    batch_size, img_h, img_w, img_c = pixel_values.shape  # permuted input NHWC
+    patch_size = 16
+    patch_count = img_h // patch_size  # 14
+    patch_size_sq_trpl = patch_size * patch_size * 3  # 768
+    patch_count_all = patch_count * patch_count  # 196
+    stride_h = patch_size
+    stride_w = 1
+
+    folded_pixel_values = ttnn.fold(pixel_values, stride_h, stride_w)  # 1568, 1024
+    ttnn.deallocate(pixel_values)
+    patch_embedding_output = ttnn.linear(
+        folded_pixel_values,
+        parameters.projection.weight,
+        bias=parameters.projection.bias,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        dtype=ttnn.bfloat16,
+        core_grid=config.core_grid,
+    )
+    patch_embedding_output = ttnn.to_layout(patch_embedding_output, layout=ttnn.ROW_MAJOR_LAYOUT)
+    patch_embedding_output = ttnn.reshape(patch_embedding_output, (batch_size, patch_count_all, patch_size_sq_trpl))
+
+    return patch_embedding_output
+```
+
 ### 2.2 Layer Normalization (Laynorm)
 After embedding the patches, Layer Normalization is applied to the input sequence. This ensures that the input embeddings are normalized before the attention mechanism, which improves the training stability of the model. The block shading in the diagram (see 2.4) illustrates how data is partitioned and distributed across multiple processing cores for parallel computation, enhancing efficiency during training.
 
-**Code**:
+**Functional Code**:
 
 ```python
 def vit_layernorm_before(config, hidden_states, *, parameters):
@@ -81,10 +109,26 @@ def vit_layernorm_before(config, hidden_states, *, parameters):
     return attention_output
 ```
 
+**Optimized Code**:
+
+```python
+def vit_layernorm_before(config, hidden_states, *, parameters):
+    attention_output = ttnn.layer_norm(
+        hidden_states,
+        weight=parameters.layernorm_before.weight,
+        bias=parameters.layernorm_before.bias,
+        epsilon=config.layer_norm_eps,
+        memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
+        program_config=config.program_configs["layernorm_program_config"],
+    )
+
+    return attention_output
+```
+
 ### 2.3 Linear Projection
 Following normalization, the input is passed through a linear projection layer that transforms the input from one dimension to another. Again, block sharding is used. This prepares the input for the self-attention mechanism by aligning the dimensions.
 
-**Code**:
+**Functional Code**:
 
 ```python
 def vit_linear_projection(config, hidden_states, *, parameters):
@@ -93,6 +137,12 @@ def vit_linear_projection(config, hidden_states, *, parameters):
         parameters.projection.weight,
         bias=parameters.projection.bias,
     )
+```
+
+**Optimized Code**:
+
+```python
+
 ```
 
 **Layer Normalization and Linear Projection Diagram**:
@@ -111,11 +161,18 @@ where
 
 Additionally, height sharding is applied by splitting the sequence length (`seqL`) across multiple processing cores. This allows the matrix operations to be parallelized, with each core handling a tile of the sequence length.
 
-**Code**:
+**Functional Code**:
 
 ```python
 query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query_key_value, num_heads=num_heads)
 ```
+
+**Optimized Code**:
+
+```python
+query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query_key_value, memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG, num_heads=num_heads)
+```
+
 
 **QKV Diagram**:
 
@@ -124,11 +181,19 @@ query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query
 ### 2.5 Attention Mechanism
 The attention mechanism begins by calculating the dot product between the Query and Key matrices. This result is then scaled by the size of the attention head to form the Attention Scores. These scores are passed through a Softmax operation, which normalizes them across the sequence length. Height sharding is applied during this process, where the sequence length is split across cores to parallelize the computation of the Attention Scores, making the operation more efficient.
 
-**Code**:
+**Functional Code**:
 
 ```python
 attention_scores = ttnn.matmul(query, key)
 attention_probs = ttnn.transformer.attention_softmax_(attention_scores, head_size=head_size)
+```
+
+**Optimized Code**:
+
+```python
+attention_scores = ttnn.matmul(query, key, memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG, dtype=ttnn.bfloat8_b, program_config=config.program_configs["query_by_key_matmul_program_config"])
+
+attention_probs = ttnn.transformer.attention_softmax_(attention_scores, attention_mask=attention_mask, head_size=head_size, program_config=config.program_configs["softmax_program_config"])
 ```
 
 **Attention Diagram**:
@@ -138,10 +203,16 @@ attention_probs = ttnn.transformer.attention_softmax_(attention_scores, head_siz
 ### 2.6 Matmul with Value
 The normalized attention scores are then multiplied by the Value matrix to produce the attention output. This is the core of the self-attention mechanism, allowing the model to focus on different parts of the input sequence.
 
-**Code**:
+**Functional Code**:
 
 ```python
 context_layer = ttnn.matmul(attention_probs, value)
+```
+
+**Optimized Code**:
+
+```python
+context_layer = ttnn.matmul(attention_probs, value, memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG, dtype=ttnn.bfloat8_b, program_config=config.program_configs["attention_probabilities_by_value_matmul_program_config"])
 ```
 
 ### 2.7 Concatenating Heads
@@ -151,11 +222,18 @@ The outputs from all attention heads are concatenated back together. This create
 
 This step aggregates the outputs from the different heads into a single vector representation for each position in the sequence.
 
-**Code**:
+**Functional Code**:
 
 ```python
 context_layer = ttnn.transformer.concatenate_heads(context_layer)
 ```
+
+**Optimized Code**:
+
+```python
+
+```
+
 **Concat Heads diagram**:
 
 ![concat](images/conc.png)
@@ -163,7 +241,7 @@ context_layer = ttnn.transformer.concatenate_heads(context_layer)
 ### 2.8 Linear Projection (again)
 After concatenating the attention heads, the output is passed through another linear layer to project it back to the original embedding dimension. This ensures that the final output of the attention block has the correct shape for subsequent operations.
 
-**Code**:
+**Functional Code**:
 
 ```python
 self_output = ttnn.linear(
@@ -173,10 +251,16 @@ self_output = ttnn.linear(
 )
 ```
 
+**Optimized Code**:
+
+```python
+
+```
+
 ### 2.9 Add and Norm
 A residual connection (skip connection) is applied, adding the original input to the attention block back to the output of the attention block. This helps in maintaining gradient flow through the network and stabilizes training. The resulting tensor is then normalized again using layer normalization.
 
-**Code**:
+**Functional Code**:
 
 ```python
 multi_head_attention_output = ttnn.add(
@@ -188,6 +272,13 @@ layernorm_after_output = ttnn.layer_norm(
     bias=parameters.layernorm_after.bias,
 )
 ```
+
+**Optimized Code**:
+
+```python
+
+```
+
 **Add and Norm Diagram**:
 
 ![addnorm](images/addnorm.png)
@@ -195,7 +286,7 @@ layernorm_after_output = ttnn.layer_norm(
 ### 2.10 Feed-Forward Network
 The output from the attention block is passed through a **Feed-Forward Network** (FFN). The FFN consists of two linear transformations with a GeLU activation function between them. The first linear layer expands the dimensionality of the embeddings, and the second linear layer projects it back to the original size. Block sharding is utilized in the FFN, where the computations are split across multiple blocks, allowing for parallel processing and improved efficiency during the linear transformations.
 
-**Code**:
+**Functional Code**:
 
 ```python
 def vit_feedforward(config, hidden_states, attention_output, *, parameters):
@@ -208,6 +299,12 @@ def vit_feedforward(config, hidden_states, attention_output, *, parameters):
     return hidden_states
 ```
 
+**Optimized Code**:
+
+```python
+
+```
+
 **FFN Diagram**:
 
 ![ffn](images/ffn.png)
@@ -215,10 +312,16 @@ def vit_feedforward(config, hidden_states, attention_output, *, parameters):
 ### 2.11 Add and Norm (again)
 Another residual connection is applied after the feed-forward network, adding the input of the FFN block back to its output. This is followed by layer normalization to stabilize the network and facilitate deeper stacking of layers.
 
-**Code**:
+**Functional Code**:
 
 ```python
 feedforward_output = ttnn.add(feedforward_output, multi_head_attention_output)
+```
+
+**Optimized Code**:
+
+```python
+
 ```
 
 ### 2.12 Output
@@ -233,7 +336,7 @@ The output can either be passed to the next layer in the Transformer encoder or 
 ### 3.1 Patch Embedding
 The code for patch embedding is implemented in the vit_patch_embeddings function. This function takes the pixel values of the input image, reshapes them into patches, and then projects these patches into the embedding space using a linear transformation.
 
-**Code**:
+**Functional Code**:
 
 ```python
 folded_pixel_values = ttnn.fold(pixel_values, stride_h=patch_size, stride_w=1)
@@ -244,10 +347,16 @@ patch_embedding_output = ttnn.linear(
 )
 ```
 
+**Optimized Code**:
+
+```python
+
+```
+
 ### 3.2 Self-Attention
 The self-attention mechanism is implemented in the vit_attention function. Here, the Query, Key, and Value matrices are created by applying linear transformations to the input embeddings. After computing the attention scores (dot product of Q and K), the scores are normalized using a Softmax function. The resulting attention probabilities are multiplied by the Value matrix to produce the attention output.
 
-**Code**:
+**Functional Code**:
 
 ```python
 query, key, value = ttnn.transformer.split_query_key_value_and_split_heads(query_key_value, num_heads=num_heads)
@@ -256,14 +365,26 @@ attention_probs = ttnn.transformer.attention_softmax_(attention_scores, attentio
 context_layer = ttnn.matmul(attention_probs, value)
 ```
 
+**Optimized Code**:
+
+```python
+
+```
+
 ### 3.3 Feed-Forward Network and Residual Connections
 The FFN is implemented in the vit_feedforward function. This function applies two linear layers with a GeLU activation in between. The FFN first increases the dimensionality, then projects it back, and includes residual connections and normalization.
 
-**Code**:
+**Functional Code**:
 
 ```python
 intermediate = ttnn.linear(hidden_states, parameters.dense.weight)
 hidden_states = vit_output(config, intermediate, attention_output, parameters=parameters.output)
+```
+
+**Optimized Code**:
+
+```python
+
 ```
 
 ## 4. Conclusion
