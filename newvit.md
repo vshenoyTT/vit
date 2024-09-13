@@ -26,7 +26,7 @@
 
 The [Vision Transformer](https://arxiv.org/pdf/2010.11929) (ViT) is a transformer model that is utilized for  vision procesing tasks. The ViT architecture in TT-NN leverages the self-attention mechanism, originally designed for NLP tasks, to process image data by treating each image as a sequence of patches. This walkthrough explains the key components of the ViT model and demonstrates how the Tenstorrent TT-NN library implements these components efficiently.
 
-## 2. Vision Transformer Encoder Implementation
+## 2. Vision Transformer Architecture
 
 This is a step-by-step walkthrough of the ViT encoder implementation in TT-NN on Grayskull. The diagram below summarizes all of these steps in a flow chart.
 
