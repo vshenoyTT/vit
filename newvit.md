@@ -65,6 +65,8 @@ def vit_patch_embeddings(config, pixel_values, *, parameters):
     return patch_embedding_output
 ```
 
+![input](images/input.png)
+
 ### 2.2 Layer Normalization (Laynorm)
 After embedding the patches, Layer Normalization is applied to the input sequence. This ensures that the input embeddings are normalized before the attention mechanism, which improves the training stability of the model. The block shading in the diagram illustrates how data is partitioned and distributed across multiple processing cores for parallel computation, enhancing efficiency during training.
 
@@ -95,6 +97,8 @@ def vit_linear_projection(config, hidden_states, *, parameters):
     )
 ```
 
+![input](images/laynormlinear.png)
+
 ### 2.4 Splitting into Q-K-V
 The input embeddings are then split into **Query** (Q), **Key** (K), and **Value** (V) matrices. This is done by projecting the input embeddings into three separate matrices. Each matrix has a size of:
 
@@ -122,6 +126,8 @@ The attention mechanism begins by calculating the dot product between the Query 
 attention_scores = ttnn.matmul(query, key)
 attention_probs = ttnn.transformer.attention_softmax_(attention_scores, head_size=head_size)
 ```
+![attn](images/attn.png)
+
 
 ### 2.6 Matmul with Value
 The normalized attention scores are then multiplied by the Value matrix to produce the attention output. This is the core of the self-attention mechanism, allowing the model to focus on different parts of the input sequence.
@@ -144,6 +150,8 @@ This step aggregates the outputs from the different heads into a single vector r
 ```python
 context_layer = ttnn.transformer.concatenate_heads(context_layer)
 ```
+
+![concat](images/concat.png)
 
 ### 2.8 Linear Projection (again)
 After concatenating the attention heads, the output is passed through another linear layer to project it back to the original embedding dimension. This ensures that the final output of the attention block has the correct shape for subsequent operations.
@@ -174,6 +182,8 @@ layernorm_after_output = ttnn.layer_norm(
 )
 ```
 
+![addnorm](images/addnorm.png)
+
 ### 2.10 Feed-Forward Network
 The output from the attention block is passed through a **Feed-Forward Network** (FFN). The FFN consists of two linear transformations with a GeLU activation function between them. The first linear layer expands the dimensionality of the embeddings, and the second linear layer projects it back to the original size.
 
@@ -190,6 +200,8 @@ def vit_feedforward(config, hidden_states, attention_output, *, parameters):
     return hidden_states
 ```
 
+![ffn](images/ffn.png)
+
 ### 2.11 Add and Norm (again)
 Another residual connection is applied after the feed-forward network, adding the input of the FFN block back to its output. This is followed by layer normalization to stabilize the network and facilitate deeper stacking of layers.
 
@@ -205,6 +217,8 @@ The final result after the feed-forward network and the second normalization ste
 `b × seqL × dim`
 
 The output can either be passed to the next layer in the Transformer encoder or to the classification head, depending on the specific task.
+
+![output](images/output.png)
 
 ## 3. Code Walkthrough
 
